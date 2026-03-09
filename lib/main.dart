@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:excel/excel.dart' as ex;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -756,9 +757,21 @@ class _MainShellState extends State<MainShell> {
                                     fit: BoxFit.cover,
                                     errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
                                   )
-                                : Image.file(
-                                    File(photoPath!),
-                                    fit: BoxFit.cover,
+                                : FutureBuilder<Uint8List>(
+                                    future: XFile(photoPath!).readAsBytes(),
+                                    builder: (context, snap) {
+                                      if (snap.connectionState != ConnectionState.done) {
+                                        return const Center(child: CircularProgressIndicator());
+                                      }
+                                      final data = snap.data;
+                                      if (data == null || data.isEmpty) {
+                                        return const Center(child: Text('الصورة غير متاحة'));
+                                      }
+                                      return Image.memory(
+                                        data,
+                                        fit: BoxFit.cover,
+                                      );
+                                    },
                                   ),
                       ),
                     ),
@@ -1684,10 +1697,21 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
                                 fit: BoxFit.cover,
                                 errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
                               )
-                            : Image.file(
-                                File(_photoPath),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                            : FutureBuilder<Uint8List>(
+                                future: XFile(_photoPath).readAsBytes(),
+                                builder: (context, snap) {
+                                  if (snap.connectionState != ConnectionState.done) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
+                                  final data = snap.data;
+                                  if (data == null || data.isEmpty) {
+                                    return const Center(child: Text('الصورة غير متاحة'));
+                                  }
+                                  return Image.memory(
+                                    data,
+                                    fit: BoxFit.cover,
+                                  );
+                                },
                               ),
                   ),
                 ),
@@ -2522,12 +2546,26 @@ class _RegistrationPageState extends State<RegistrationPage> {
                             },
                             errorBuilder: (_, __, ___) => const Text('الصورة غير متاحة'),
                           )
-                        : Image.file(
-                            File(photoPath),
-                            height: 120,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Text('الصورة غير متاحة'),
+                        : FutureBuilder<Uint8List>(
+                            future: XFile(photoPath).readAsBytes(),
+                            builder: (context, snap) {
+                              if (snap.connectionState != ConnectionState.done) {
+                                return const SizedBox(
+                                  height: 120,
+                                  child: Center(child: CircularProgressIndicator()),
+                                );
+                              }
+                              final data = snap.data;
+                              if (data == null || data.isEmpty) {
+                                return const Text('الصورة غير متاحة');
+                              }
+                              return Image.memory(
+                                data,
+                                height: 120,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              );
+                            },
                           ),
                   ),
                 ],
@@ -2694,6 +2732,15 @@ class _RegistrationPageState extends State<RegistrationPage> {
   Future<void> _exportExcel() async {
     setState(() => _exporting = true);
     try {
+      if (kIsWeb) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('التصدير إلى Excel غير مدعوم على الويب')),
+          );
+        }
+        return;
+      }
+
       final records = await RegistrationRepository.instance.getAll();
       if (records.isEmpty) {
         if (mounted) {
@@ -2854,7 +2901,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
                     const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(14),
-                      child: kIsWeb
+                      child: (_selectedPhotoPath!.startsWith('http://') ||
+                              _selectedPhotoPath!.startsWith('https://') ||
+                              _selectedPhotoPath!.startsWith('blob:'))
                           ? Image.network(
                               _selectedPhotoPath!,
                               height: 150,
@@ -2865,11 +2914,29 @@ class _RegistrationPageState extends State<RegistrationPage> {
                                 child: Center(child: Text('تعذر عرض الصورة')),
                               ),
                             )
-                          : Image.file(
-                              File(_selectedPhotoPath!),
-                              height: 150,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
+                          : FutureBuilder<Uint8List>(
+                              future: XFile(_selectedPhotoPath!).readAsBytes(),
+                              builder: (context, snap) {
+                                if (snap.connectionState != ConnectionState.done) {
+                                  return const SizedBox(
+                                    height: 150,
+                                    child: Center(child: CircularProgressIndicator()),
+                                  );
+                                }
+                                final data = snap.data;
+                                if (data == null || data.isEmpty) {
+                                  return const SizedBox(
+                                    height: 150,
+                                    child: Center(child: Text('تعذر عرض الصورة')),
+                                  );
+                                }
+                                return Image.memory(
+                                  data,
+                                  height: 150,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                );
+                              },
                             ),
                     ),
                   ],
@@ -3107,15 +3174,29 @@ class _RegistrationPageState extends State<RegistrationPage> {
                                                     style: TextStyle(fontSize: 13),
                                                   ),
                                                 )
-                                              : Image.file(
-                                                  File(normalized),
-                                                  height: 110,
-                                                  width: double.infinity,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) => const Text(
-                                                    'الصورة غير متاحة على هذا الجهاز',
-                                                    style: TextStyle(fontSize: 13),
-                                                  ),
+                                              : FutureBuilder<Uint8List>(
+                                                  future: XFile(normalized).readAsBytes(),
+                                                  builder: (context, snap) {
+                                                    if (snap.connectionState != ConnectionState.done) {
+                                                      return const SizedBox(
+                                                        height: 110,
+                                                        child: Center(child: CircularProgressIndicator()),
+                                                      );
+                                                    }
+                                                    final data = snap.data;
+                                                    if (data == null || data.isEmpty) {
+                                                      return const Text(
+                                                        'الصورة غير متاحة على هذا الجهاز',
+                                                        style: TextStyle(fontSize: 13),
+                                                      );
+                                                    }
+                                                    return Image.memory(
+                                                      data,
+                                                      height: 110,
+                                                      width: double.infinity,
+                                                      fit: BoxFit.cover,
+                                                    );
+                                                  },
                                                 );
                                         })(),
                                       ),
