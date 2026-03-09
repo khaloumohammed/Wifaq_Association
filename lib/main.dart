@@ -2036,7 +2036,7 @@ class AchievementsPage extends StatefulWidget {
   final bool isAdmin;
 
   @override
-  State<AchievementsPage> setState() => _AchievementsPageState();
+  State<AchievementsPage> createState() => _AchievementsPageState();
 }
 
 class _AchievementsPageState extends State<AchievementsPage> {
@@ -4094,7 +4094,7 @@ class CloudSyncService {
     );
     
     // Handle null or missing 'data' field
-    if (response == null || response['data'] == null) {
+    if (response['data'] == null) {
       if (kDebugMode) {
         print('[CloudSync] Photo upload response missing data: $response');
       }
@@ -4838,6 +4838,8 @@ class CloudSyncService {
             notes: e['notes']?.toString() ?? '',
             photoPath: e['photo_url']?.toString() ?? '',
             wantsMembershipCard: _toBool(e['wants_membership_card']),
+            pledgeMoral: _toBool(e['pledge_moral']),
+            pledgeFinancial: _toBool(e['pledge_financial']),
             createdAt: DateTime.tryParse(e['created_at']?.toString() ?? '') ?? DateTime.now(),
           ),
         )
