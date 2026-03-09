@@ -28,10 +28,19 @@ migrate_working_dir/
 **/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
+.flutter-plugins
 .pub-cache/
 .pub/
 /build/
 /coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Google Apps Script backend (deployed separately)
+google_apps_script/
 
 # Symbolication related
 app.*.symbols
