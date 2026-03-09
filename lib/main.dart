@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -32,7 +33,7 @@ void main() async {
     reportError(details.exception, details.stack ?? StackTrace.current);
   };
 
-  PlatformDispatcher.instance.onError = (error, stack) {
+  ui.PlatformDispatcher.instance.onError = (error, stack) {
     reportError(error, stack);
     return true;
   };
