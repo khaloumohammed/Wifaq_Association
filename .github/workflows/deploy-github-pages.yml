@@ -31,9 +31,12 @@ jobs:
       - name: Pub get
         run: flutter pub get
 
+      - name: Analyze
+        run: flutter analyze
+
       - name: Build web
         run: |
-          flutter build web --release --pwa-strategy=none --base-href "/Wifaq_Association/" \
+          flutter build web -v --release --pwa-strategy=none --base-href "/Wifaq_Association/" \
             --dart-define=APPS_SCRIPT_URL="${{ secrets.APPS_SCRIPT_URL }}" \
             --dart-define=APPS_SCRIPT_API_KEY="${{ secrets.APPS_SCRIPT_API_KEY }}"
 
