@@ -16,6 +16,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'url_opener.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -2415,6 +2417,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
   bool _wantsMembershipCard = false;
   bool _pledgeMoral = false;
   bool _pledgeFinancial = false;
+
+  static const String _facebookGroupUrl = 'https://www.facebook.com/share/g/18L6nMSDwv/';
+  int _activeFilterIndex = 0;
   List<MemberRegistration> _cachedItems = const [];
 
   bool _saving = false;
@@ -2879,6 +2884,48 @@ class _RegistrationPageState extends State<RegistrationPage> {
         controller: _listScrollCtrl,
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
         children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () async {
+              await openUrl(_facebookGroupUrl);
+              if (!mounted) return;
+              if (!kIsWeb) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('تم نسخ رابط فيسبوك. يمكنك فتحه في المتصفح')),
+                );
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1877F2).withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF1877F2).withValues(alpha: 0.22)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1877F2).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.facebook, color: Color(0xFF1877F2)),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'انقر هنا للاطلاع على صفحتنا في فيسبوك',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const Icon(Icons.open_in_new, size: 18, color: Color(0xFF1877F2)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           _GlassCard(
             child: Form(
               key: _formKey,
@@ -3041,6 +3088,29 @@ class _RegistrationPageState extends State<RegistrationPage> {
             ),
             ),
             const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: List.generate(4, (index) {
+                  final selected = _activeFilterIndex == index;
+                  final label = switch (index) {
+                    0 => 'الكل',
+                    1 => 'يريد البطاقة',
+                    2 => 'دعم معنوي',
+                    _ => 'دعم مادي',
+                  };
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(label),
+                      selected: selected,
+                      onSelected: (_) => setState(() => _activeFilterIndex = index),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 10),
             Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -3070,14 +3140,28 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
               }
               final items = snapshot.data ?? const [];
+              final filtered = items.where((e) {
+                return switch (_activeFilterIndex) {
+                  0 => true,
+                  1 => e.wantsMembershipCard,
+                  2 => e.pledgeMoral,
+                  _ => e.pledgeFinancial,
+                };
+              }).toList();
               if (items.isEmpty) {
                 return const _GlassCard(
                   child: Text('لا توجد طلبات انخراط بعد', style: TextStyle(fontSize: 16)),
                 );
               }
 
+              if (filtered.isEmpty) {
+                return const _GlassCard(
+                  child: Text('لا توجد نتائج لهذا الفلتر', style: TextStyle(fontSize: 16)),
+                );
+              }
+
               return Column(
-                children: items
+                children: filtered
                     .map(
                       (entry) => Padding(
                         padding: const EdgeInsets.only(bottom: 8),
