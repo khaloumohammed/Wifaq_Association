@@ -2,9 +2,10 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:excel/excel.dart' as ex;
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -13,9 +14,30 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const WifaqApp());
+
+  final lastError = ValueNotifier<String?>(null);
+
+  void reportError(Object error, StackTrace stack) {
+    final msg = '$error\n\n$stack';
+    lastError.value = msg;
+    if (kDebugMode) {
+      print(msg);
+    }
+  }
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    reportError(details.exception, details.stack ?? StackTrace.current);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    reportError(error, stack);
+    return true;
+  };
+
+  runApp(MyApp(lastError: lastError));
 }
 
 String _twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -65,6 +87,97 @@ const Map<String, String> kAchievementStatusLabels = {
   'preparing': 'الإنجازات قيد التحضير',
   'upcoming': 'الإنجازات القادمة',
 };
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key, required this.lastError});
+
+  final ValueNotifier<String?> lastError;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'جمعية وفاق لزاري للتنمية',
+      builder: (context, child) {
+        return Stack(
+          children: [
+            if (child != null) child,
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: ValueListenableBuilder<String?>(
+                valueListenable: lastError,
+                builder: (context, value, _) {
+                  if (value == null || value.trim().isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2B0A0A).withOpacity(0.92),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.8)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'Erreur (copie/colle-moi ce message)',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 140),
+                            child: SingleChildScrollView(
+                              child: Text(
+                                value,
+                                style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.2),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              TextButton(
+                                onPressed: () async {
+                                  await Clipboard.setData(ClipboardData(text: value));
+                                },
+                                child: const Text('Copier', style: TextStyle(color: Colors.white)),
+                              ),
+                              const SizedBox(width: 8),
+                              TextButton(
+                                onPressed: () => lastError.value = null,
+                                child: const Text('Fermer', style: TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0C8A7B),
+          primary: const Color(0xFF0C8A7B),
+          secondary: const Color(0xFFE9733A),
+          surface: const Color(0xFFF8FBFA),
+        ),
+      ),
+      home: const WifaqApp(),
+    );
+  }
+}
 
 class WifaqApp extends StatelessWidget {
   const WifaqApp({super.key});
@@ -548,6 +661,7 @@ class _MainShellState extends State<MainShell> {
     final detailsCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now();
     String? photoPath;
+    XFile? photoFile;
     final picker = ImagePicker();
 
     await showDialog<void>(
@@ -600,7 +714,10 @@ class _MainShellState extends State<MainShell> {
                     onPressed: () async {
                       final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
                       if (picked == null) return;
-                      setModalState(() => photoPath = picked.path);
+                      setModalState(() {
+                        photoPath = picked.path;
+                        photoFile = picked;
+                      });
                     },
                     icon: const Icon(Icons.image_outlined),
                     label: const Text('إرفاق صورة'),
@@ -609,11 +726,39 @@ class _MainShellState extends State<MainShell> {
                     const SizedBox(height: 10),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.file(
-                        File(photoPath!),
+                      child: SizedBox(
                         height: 130,
                         width: double.infinity,
-                        fit: BoxFit.cover,
+                        child: (kIsWeb && photoFile != null)
+                            ? FutureBuilder<Uint8List>(
+                                future: photoFile!.readAsBytes(),
+                                builder: (context, snap) {
+                                  if (snap.connectionState != ConnectionState.done) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
+                                  final data = snap.data;
+                                  if (data == null || data.isEmpty) {
+                                    return const Center(child: Text('الصورة غير متاحة'));
+                                  }
+                                  return Image.memory(
+                                    data,
+                                    fit: BoxFit.cover,
+                                  );
+                                },
+                              )
+                            : (photoPath!.startsWith('http://') ||
+                                    photoPath!.startsWith('https://') ||
+                                    photoPath!.startsWith('blob:') ||
+                                    kIsWeb)
+                                ? Image.network(
+                                    photoPath!,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                                  )
+                                : Image.file(
+                                    File(photoPath!),
+                                    fit: BoxFit.cover,
+                                  ),
                       ),
                     ),
                   ],
@@ -1512,20 +1657,37 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
                   child: SizedBox(
                     width: 280,
                     height: 130,
-                    child: (_photoPath.startsWith('http://') ||
-                            _photoPath.startsWith('https://') ||
-                            _photoPath.startsWith('blob:') ||
-                            kIsWeb)
-                        ? Image.network(
-                            _photoPath,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                    child: (kIsWeb && _photoFile != null)
+                        ? FutureBuilder<Uint8List>(
+                            future: _photoFile!.readAsBytes(),
+                            builder: (context, snap) {
+                              if (snap.connectionState != ConnectionState.done) {
+                                return const Center(child: CircularProgressIndicator());
+                              }
+                              final data = snap.data;
+                              if (data == null || data.isEmpty) {
+                                return const Center(child: Text('الصورة غير متاحة'));
+                              }
+                              return Image.memory(
+                                data,
+                                fit: BoxFit.cover,
+                              );
+                            },
                           )
-                        : Image.file(
-                            File(_photoPath),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
-                          ),
+                        : (_photoPath.startsWith('http://') ||
+                                _photoPath.startsWith('https://') ||
+                                _photoPath.startsWith('blob:') ||
+                                kIsWeb)
+                            ? Image.network(
+                                _photoPath,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                              )
+                            : Image.file(
+                                File(_photoPath),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                              ),
                   ),
                 ),
               ],
@@ -2906,18 +3068,55 @@ class _RegistrationPageState extends State<RegistrationPage> {
                                       const SizedBox(height: 8),
                                       ClipRRect(
                                         borderRadius: BorderRadius.circular(12),
-                                        child: Image.file(
-                                          File(entry.photoPath),
-                                          height: 110,
-                                          width: double.infinity,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return const Text(
-                                              'الصورة غير متاحة على هذا الجهاز',
-                                              style: TextStyle(fontSize: 13),
-                                            );
-                                          },
-                                        ),
+                                        child: (() {
+                                          final raw = entry.photoPath.trim();
+                                          if (raw.isEmpty) {
+                                            return const SizedBox.shrink();
+                                          }
+
+                                          String normalized = raw;
+                                          String? id;
+                                          if (raw.contains('drive.google.com/uc?') && raw.contains('id=')) {
+                                            id = Uri.tryParse(raw)?.queryParameters['id'];
+                                          } else if (raw.contains('drive.google.com/open') && raw.contains('id=')) {
+                                            id = Uri.tryParse(raw)?.queryParameters['id'];
+                                          } else if (raw.contains('drive.google.com/thumbnail') && raw.contains('id=')) {
+                                            id = Uri.tryParse(raw)?.queryParameters['id'];
+                                          } else if (raw.contains('drive.google.com/file/d/')) {
+                                            final match = RegExp(r'drive\\.google\\.com/file/d/([^/]+)').firstMatch(raw);
+                                            id = match?.group(1);
+                                          }
+                                          if (id != null && id.isNotEmpty) {
+                                            normalized = 'https://lh3.googleusercontent.com/d/$id=w1000';
+                                          }
+
+                                          final isNetworkOrWeb = kIsWeb ||
+                                              normalized.startsWith('http://') ||
+                                              normalized.startsWith('https://') ||
+                                              normalized.startsWith('blob:');
+
+                                          return isNetworkOrWeb
+                                              ? Image.network(
+                                                  normalized,
+                                                  height: 110,
+                                                  width: double.infinity,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) => const Text(
+                                                    'الصورة غير متاحة',
+                                                    style: TextStyle(fontSize: 13),
+                                                  ),
+                                                )
+                                              : Image.file(
+                                                  File(normalized),
+                                                  height: 110,
+                                                  width: double.infinity,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, __, ___) => const Text(
+                                                    'الصورة غير متاحة على هذا الجهاز',
+                                                    style: TextStyle(fontSize: 13),
+                                                  ),
+                                                );
+                                        })(),
                                       ),
                                     ],
                                     const SizedBox(height: 10),
@@ -3704,6 +3903,13 @@ class CloudSyncService {
         }
         return const {'file_id': '', 'url': ''};
       }
+    } else if (kIsWeb) {
+      // On web, we must not use dart:io File APIs. If we don't have an XFile,
+      // we cannot read bytes safely.
+      if (kDebugMode) {
+        print('[CloudSync] Missing XFile for web upload; skipping photo upload');
+      }
+      return const {'file_id': '', 'url': ''};
     } else {
       // On mobile, path is a file path
       final file = File(path);
