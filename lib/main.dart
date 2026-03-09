@@ -1038,8 +1038,8 @@ class _ExecutivePageState extends State<ExecutivePage> {
                   minScale: 0.8,
                   maxScale: 4,
                   child: Center(
-                    child: Image.file(
-                      File(path),
+                    child: Image.network(
+                      path,
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => const Text(
                         'تعذر عرض الصورة',
@@ -1094,6 +1094,9 @@ class _ExecutivePageState extends State<ExecutivePage> {
     if (formResult == null) return;
     
     try {
+      if (kIsWeb && formResult.photoFile != null) {
+        CloudSyncService.instance._tempWebPhotoFile = formResult.photoFile;
+      }
       if (member == null) {
         await RegistrationRepository.instance.insertExecutiveMember(
           ExecutiveMember(
@@ -1135,6 +1138,10 @@ class _ExecutivePageState extends State<ExecutivePage> {
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if (kIsWeb) {
+        CloudSyncService.instance._tempWebPhotoFile = null;
+      }
     }
   }
 
@@ -1235,20 +1242,39 @@ class _ExecutivePageState extends State<ExecutivePage> {
               return Column(
                 children: List.generate(members.length, (index) {
                   final item = members[index];
+                  final normalizedPhotoUrl = (() {
+                    final raw = item.photoPath.trim();
+                    if (raw.isEmpty) return '';
+                    String? id;
+                    if (raw.contains('drive.google.com/uc?') && raw.contains('id=')) {
+                      id = Uri.tryParse(raw)?.queryParameters['id'];
+                    } else if (raw.contains('drive.google.com/open') && raw.contains('id=')) {
+                      id = Uri.tryParse(raw)?.queryParameters['id'];
+                    } else if (raw.contains('drive.google.com/thumbnail') && raw.contains('id=')) {
+                      id = Uri.tryParse(raw)?.queryParameters['id'];
+                    } else if (raw.contains('drive.google.com/file/d/')) {
+                      final match = RegExp(r'drive\\.google\\.com/file/d/([^/]+)').firstMatch(raw);
+                      id = match?.group(1);
+                    }
+                    if (id != null && id.isNotEmpty) {
+                      return 'https://lh3.googleusercontent.com/d/$id=w400';
+                    }
+                    return raw;
+                  })();
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _GlassCard(
                       child: Row(
                         children: [
-                          item.photoPath.isNotEmpty
+                          normalizedPhotoUrl.isNotEmpty
                               ? InkWell(
-                                  onTap: () => _showFullScreenImage(item.photoPath),
+                                  onTap: () => _showFullScreenImage(normalizedPhotoUrl),
                                   borderRadius: BorderRadius.circular(14),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(14),
                                     child: Image.network(
-                                      item.photoPath,
-                                      key: ValueKey('exec-${item.id}-${item.photoPath}'),
+                                      normalizedPhotoUrl,
+                                      key: ValueKey('exec-${item.id}-$normalizedPhotoUrl'),
                                       width: 52,
                                       height: 52,
                                       fit: BoxFit.cover,
@@ -1367,11 +1393,13 @@ class _ExecutiveMemberFormResult {
     required this.name,
     required this.role,
     required this.photoPath,
+    this.photoFile,
   });
 
   final String name;
   final String role;
   final String photoPath;
+  final XFile? photoFile;
 }
 
 class _ExecutiveMemberDialog extends StatefulWidget {
@@ -1397,6 +1425,7 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _roleCtrl;
   late String _photoPath;
+  XFile? _photoFile;
   String? _errorText;
 
   @override
@@ -1420,7 +1449,10 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
       imageQuality: 80,
     );
     if (!mounted || picked == null) return;
-    setState(() => _photoPath = picked.path);
+    setState(() {
+      _photoPath = picked.path;
+      _photoFile = picked;
+    });
   }
 
   void _save() {
@@ -1435,6 +1467,7 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
         name: name,
         role: role,
         photoPath: _photoPath,
+        photoFile: _photoFile,
       ),
     );
   }
@@ -1467,7 +1500,10 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
               if (_photoPath.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 TextButton.icon(
-                  onPressed: () => setState(() => _photoPath = ''),
+                  onPressed: () => setState(() {
+                    _photoPath = '';
+                    _photoFile = null;
+                  }),
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('حذف الصورة'),
                 ),
@@ -1476,11 +1512,20 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
                   child: SizedBox(
                     width: 280,
                     height: 130,
-                    child: Image.file(
-                      File(_photoPath),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
-                    ),
+                    child: (_photoPath.startsWith('http://') ||
+                            _photoPath.startsWith('https://') ||
+                            _photoPath.startsWith('blob:') ||
+                            kIsWeb)
+                        ? Image.network(
+                            _photoPath,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                          )
+                        : Image.file(
+                            File(_photoPath),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                          ),
                   ),
                 ),
               ],
