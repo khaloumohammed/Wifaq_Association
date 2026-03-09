@@ -47,6 +47,14 @@ String _twoDigits(int value) => value.toString().padLeft(2, '0');
 String _formatDate(DateTime date) =>
     '${date.year}-${_twoDigits(date.month)}-${_twoDigits(date.day)}';
 
+String _formatMaybeIsoDate(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return '';
+  final parsed = DateTime.tryParse(trimmed);
+  if (parsed == null) return trimmed;
+  return _formatDate(parsed.toLocal());
+}
+
 String _formatDateTime(DateTime date) =>
     '${_formatDate(date)} ${_twoDigits(date.hour)}:${_twoDigits(date.minute)}';
 
@@ -1180,7 +1188,6 @@ class _ExecutivePageState extends State<ExecutivePage> {
   final _imagePicker = ImagePicker();
   late Future<List<ExecutiveMember>> _membersFuture;
   int _reloadToken = 0;
-  bool _syncingCloud = false;
 
   void _showFullScreenImage(String path) {
     showDialog<void>(
@@ -1329,17 +1336,6 @@ class _ExecutivePageState extends State<ExecutivePage> {
     await _refresh();
   }
 
-  Future<void> _saveToCloud() async {
-    if (_syncingCloud) return;
-    setState(() => _syncingCloud = true);
-    await _refresh();
-    if (!mounted) return;
-    setState(() => _syncingCloud = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('يتم الحفظ مباشرة في Google Sheets')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
@@ -1352,11 +1348,6 @@ class _ExecutivePageState extends State<ExecutivePage> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                OutlinedButton.icon(
-                  onPressed: _syncingCloud ? null : _saveToCloud,
-                  icon: const Icon(Icons.cloud_upload_outlined),
-                  label: Text(_syncingCloud ? 'جاري الحفظ...' : 'حفظ السحابة'),
-                ),
                 OutlinedButton.icon(
                   onPressed: () async {
                     try {
@@ -1668,52 +1659,48 @@ class _ExecutiveMemberDialogState extends State<_ExecutiveMemberDialog> {
                 ),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    width: 280,
-                    height: 130,
-                    child: (kIsWeb && _photoFile != null)
-                        ? FutureBuilder<Uint8List>(
-                            future: _photoFile!.readAsBytes(),
-                            builder: (context, snap) {
-                              if (snap.connectionState != ConnectionState.done) {
-                                return const Center(child: CircularProgressIndicator());
-                              }
-                              final data = snap.data;
-                              if (data == null || data.isEmpty) {
-                                return const Center(child: Text('الصورة غير متاحة'));
-                              }
-                              return Image.memory(
-                                data,
-                                fit: BoxFit.cover,
-                              );
-                            },
-                          )
-                        : (_photoPath.startsWith('http://') ||
-                                _photoPath.startsWith('https://') ||
-                                _photoPath.startsWith('blob:') ||
-                                kIsWeb)
-                            ? Image.network(
-                                _photoPath,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
-                              )
-                            : FutureBuilder<Uint8List>(
-                                future: XFile(_photoPath).readAsBytes(),
-                                builder: (context, snap) {
-                                  if (snap.connectionState != ConnectionState.done) {
-                                    return const Center(child: CircularProgressIndicator());
-                                  }
-                                  final data = snap.data;
-                                  if (data == null || data.isEmpty) {
-                                    return const Center(child: Text('الصورة غير متاحة'));
-                                  }
-                                  return Image.memory(
-                                    data,
-                                    fit: BoxFit.cover,
-                                  );
-                                },
-                              ),
-                  ),
+                  child: (kIsWeb && _photoFile != null)
+                      ? FutureBuilder<Uint8List>(
+                          future: _photoFile!.readAsBytes(),
+                          builder: (context, snap) {
+                            if (snap.connectionState != ConnectionState.done) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            final data = snap.data;
+                            if (data == null || data.isEmpty) {
+                              return const Center(child: Text('الصورة غير متاحة'));
+                            }
+                            return Image.memory(
+                              data,
+                              fit: BoxFit.cover,
+                            );
+                          },
+                        )
+                      : (_photoPath.startsWith('http://') ||
+                              _photoPath.startsWith('https://') ||
+                              _photoPath.startsWith('blob:') ||
+                              kIsWeb)
+                          ? Image.network(
+                              _photoPath,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Center(child: Text('الصورة غير متاحة')),
+                            )
+                          : FutureBuilder<Uint8List>(
+                              future: XFile(_photoPath).readAsBytes(),
+                              builder: (context, snap) {
+                                if (snap.connectionState != ConnectionState.done) {
+                                  return const Center(child: CircularProgressIndicator());
+                                }
+                                final data = snap.data;
+                                if (data == null || data.isEmpty) {
+                                  return const Text('الصورة غير متاحة');
+                                }
+                                return Image.memory(
+                                  data,
+                                  fit: BoxFit.cover,
+                                );
+                              },
+                            ),
                 ),
               ],
               if (_errorText != null) ...[
@@ -2049,7 +2036,7 @@ class AchievementsPage extends StatefulWidget {
   final bool isAdmin;
 
   @override
-  State<AchievementsPage> createState() => _AchievementsPageState();
+  State<AchievementsPage> setState() => _AchievementsPageState();
 }
 
 class _AchievementsPageState extends State<AchievementsPage> {
@@ -2057,7 +2044,6 @@ class _AchievementsPageState extends State<AchievementsPage> {
   String _currentStatus = kAchievementStatuses.first;
   late Future<List<Achievement>> _itemsFuture;
   int _reloadToken = 0;
-  bool _syncingCloud = false;
 
   @override
   void initState() {
@@ -2178,17 +2164,6 @@ class _AchievementsPageState extends State<AchievementsPage> {
     }
   }
 
-  Future<void> _saveToCloud() async {
-    if (_syncingCloud) return;
-    setState(() => _syncingCloud = true);
-    await _refresh();
-    if (!mounted) return;
-    setState(() => _syncingCloud = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('يتم الحفظ مباشرة في Google Sheets')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -2219,11 +2194,6 @@ class _AchievementsPageState extends State<AchievementsPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        OutlinedButton.icon(
-                          onPressed: _syncingCloud ? null : _saveToCloud,
-                          icon: const Icon(Icons.cloud_upload_outlined),
-                          label: Text(_syncingCloud ? 'جاري الحفظ...' : 'حفظ السحابة'),
-                        ),
                         OutlinedButton.icon(
                           onPressed: () => _showAchievementDialog(),
                           icon: const Icon(Icons.add_circle_outline),
@@ -2257,147 +2227,147 @@ class _AchievementsPageState extends State<AchievementsPage> {
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: _GlassCard(
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFE3F6F2),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Text(
-                                      item.year,
-                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                                    ),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFE3F6F2),
+                                          borderRadius: BorderRadius.circular(14),
+                                        ),
+                                        child: Text(
+                                          _formatMaybeIsoDate(item.year),
+                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          item.description,
+                                          style: const TextStyle(fontSize: 16, height: 1.5),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(top: 8),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(item.description, style: const TextStyle(fontSize: 16, height: 1.5)),
-                                          if (item.photos.isNotEmpty) ...[
-                                            const SizedBox(height: 8),
-                                            SizedBox(
-                                              height: 150,
-                                              child: PageView.builder(
-                                                itemCount: item.photos.length,
-                                                controller: PageController(viewportFraction: 0.92),
-                                                itemBuilder: (context, photoIndex) {
-                                                  final photo = item.photos[photoIndex];
-                                                  return Padding(
-                                                    padding: const EdgeInsets.only(left: 8),
-                                                    child: InkWell(
-                                                      borderRadius: BorderRadius.circular(12),
-                                                      onTap: () => _openAchievementPhotosViewer(item, photoIndex),
-                                                      child: ClipRRect(
-                                                        borderRadius: BorderRadius.circular(12),
-                                                        child: Image.network(
-                                                          (() {
-                                                            final raw = photo.path.trim();
-                                                            if (raw.isEmpty) return raw;
-                                                            String? id;
-                                                            if (raw.contains('drive.google.com/uc?') && raw.contains('id=')) {
-                                                              id = Uri.tryParse(raw)?.queryParameters['id'];
-                                                            } else if (raw.contains('drive.google.com/open') && raw.contains('id=')) {
-                                                              id = Uri.tryParse(raw)?.queryParameters['id'];
-                                                            } else if (raw.contains('drive.google.com/thumbnail') && raw.contains('id=')) {
-                                                              id = Uri.tryParse(raw)?.queryParameters['id'];
-                                                            } else if (raw.contains('drive.google.com/file/d/')) {
-                                                              final match = RegExp(r'drive\\.google\\.com/file/d/([^/]+)').firstMatch(raw);
-                                                              id = match?.group(1);
-                                                            }
-                                                            if (id != null && id.isNotEmpty) {
-                                                              return 'https://lh3.googleusercontent.com/d/$id=w800';
-                                                            }
-                                                            return raw;
-                                                          })(),
-                                                          fit: BoxFit.cover,
-                                                          loadingBuilder: (context, child, loadingProgress) {
-                                                            if (loadingProgress == null) return child;
-                                                            return Container(
-                                                              color: const Color(0xFFEAF2F0),
-                                                              alignment: Alignment.center,
-                                                              child: const CircularProgressIndicator(),
-                                                            );
-                                                          },
-                                                          errorBuilder: (_, __, ___) => Container(
-                                                            color: const Color(0xFFEAF2F0),
-                                                            alignment: Alignment.center,
-                                                            child: const Text('تعذر عرض الصورة'),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  );
-                                                },
+                                  if (item.photos.isNotEmpty) ...[
+                                    const SizedBox(height: 10),
+                                    SizedBox(
+                                      height: 220,
+                                      child: PageView.builder(
+                                        itemCount: item.photos.length,
+                                        controller: PageController(viewportFraction: 0.96),
+                                        itemBuilder: (context, photoIndex) {
+                                          final photo = item.photos[photoIndex];
+                                          return Padding(
+                                            padding: const EdgeInsets.only(left: 8),
+                                            child: InkWell(
+                                              borderRadius: BorderRadius.circular(16),
+                                              onTap: () => _openAchievementPhotosViewer(item, photoIndex),
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(16),
+                                                child: Image.network(
+                                                  (() {
+                                                    final raw = photo.path.trim();
+                                                    if (raw.isEmpty) return raw;
+                                                    String? id;
+                                                    if (raw.contains('drive.google.com/uc?') && raw.contains('id=')) {
+                                                      id = Uri.tryParse(raw)?.queryParameters['id'];
+                                                    } else if (raw.contains('drive.google.com/open') && raw.contains('id=')) {
+                                                      id = Uri.tryParse(raw)?.queryParameters['id'];
+                                                    } else if (raw.contains('drive.google.com/thumbnail') && raw.contains('id=')) {
+                                                      id = Uri.tryParse(raw)?.queryParameters['id'];
+                                                    } else if (raw.contains('drive.google.com/file/d/')) {
+                                                      final match = RegExp(r'drive\\.google\\.com/file/d/([^/]+)').firstMatch(raw);
+                                                      id = match?.group(1);
+                                                    }
+                                                    if (id != null && id.isNotEmpty) {
+                                                      return 'https://lh3.googleusercontent.com/d/$id=w1600';
+                                                    }
+                                                    return raw;
+                                                  })(),
+                                                  fit: BoxFit.cover,
+                                                  loadingBuilder: (context, child, loadingProgress) {
+                                                    if (loadingProgress == null) return child;
+                                                    return Container(
+                                                      color: const Color(0xFFEAF2F0),
+                                                      alignment: Alignment.center,
+                                                      child: const CircularProgressIndicator(),
+                                                    );
+                                                  },
+                                                  errorBuilder: (_, __, ___) => Container(
+                                                    color: const Color(0xFFEAF2F0),
+                                                    alignment: Alignment.center,
+                                                    child: const Text('تعذر عرض الصورة'),
+                                                  ),
+                                                ),
                                               ),
                                             ),
-                                          ],
-                                          if (widget.isAdmin) ...[
-                                            const SizedBox(height: 8),
-                                            Wrap(
-                                              spacing: 8,
-                                              runSpacing: 8,
-                                              children: [
-                                                OutlinedButton.icon(
-                                                  onPressed: index == 0
-                                                      ? null
-                                                      : () async {
-                                                          await RegistrationRepository.instance.moveAchievement(
-                                                            item.id ?? -1,
-                                                            status: _currentStatus,
-                                                            up: true,
-                                                          );
-                                                          if (!mounted) return;
-                                                          await _refresh();
-                                                        },
-                                                  icon: const Icon(Icons.keyboard_arrow_up, size: 18),
-                                                  label: const Text('أعلى'),
-                                                ),
-                                                OutlinedButton.icon(
-                                                  onPressed: index == items.length - 1
-                                                      ? null
-                                                      : () async {
-                                                          await RegistrationRepository.instance.moveAchievement(
-                                                            item.id ?? -1,
-                                                            status: _currentStatus,
-                                                            up: false,
-                                                          );
-                                                          if (!mounted) return;
-                                                          await _refresh();
-                                                        },
-                                                  icon: const Icon(Icons.keyboard_arrow_down, size: 18),
-                                                  label: const Text('أسفل'),
-                                                ),
-                                                OutlinedButton.icon(
-                                                  onPressed: () => _addAchievementPhotos(item),
-                                                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-                                                  label: const Text('صور تذكارية'),
-                                                ),
-                                                OutlinedButton.icon(
-                                                  onPressed: () => _showAchievementDialog(item: item),
-                                                  icon: const Icon(Icons.edit_outlined, size: 18),
-                                                  label: const Text('تعديل'),
-                                                ),
-                                                OutlinedButton.icon(
-                                                  onPressed: () => _deleteAchievement(item),
-                                                  style: OutlinedButton.styleFrom(
-                                                    foregroundColor: Colors.red.shade700,
-                                                  ),
-                                                  icon: const Icon(Icons.delete_outline, size: 18),
-                                                  label: const Text('حذف'),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
-                                        ],
+                                          );
+                                        },
                                       ),
                                     ),
-                                  ),
+                                  ],
+                                  if (widget.isAdmin) ...[
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          onPressed: index == 0
+                                              ? null
+                                              : () async {
+                                                  await RegistrationRepository.instance.moveAchievement(
+                                                    item.id ?? -1,
+                                                    status: _currentStatus,
+                                                    up: true,
+                                                  );
+                                                  if (!mounted) return;
+                                                  await _refresh();
+                                                },
+                                          icon: const Icon(Icons.keyboard_arrow_up, size: 18),
+                                          label: const Text('أعلى'),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: index == items.length - 1
+                                              ? null
+                                              : () async {
+                                                  await RegistrationRepository.instance.moveAchievement(
+                                                    item.id ?? -1,
+                                                    status: _currentStatus,
+                                                    up: false,
+                                                  );
+                                                  if (!mounted) return;
+                                                  await _refresh();
+                                                },
+                                          icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+                                          label: const Text('أسفل'),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: () => _addAchievementPhotos(item),
+                                          icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                                          label: const Text('صور تذكارية'),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: () => _showAchievementDialog(item: item),
+                                          icon: const Icon(Icons.edit_outlined, size: 18),
+                                          label: const Text('تعديل'),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: () => _deleteAchievement(item),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: Colors.red.shade700,
+                                          ),
+                                          icon: const Icon(Icons.delete_outline, size: 18),
+                                          label: const Text('حذف'),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -2443,6 +2413,8 @@ class _RegistrationPageState extends State<RegistrationPage> {
   String? _selectedPhotoPath;
   XFile? _selectedPhotoFile; // Store XFile for web platform
   bool _wantsMembershipCard = false;
+  bool _pledgeMoral = false;
+  bool _pledgeFinancial = false;
   List<MemberRegistration> _cachedItems = const [];
 
   bool _saving = false;
@@ -2517,6 +2489,8 @@ class _RegistrationPageState extends State<RegistrationPage> {
     final notesCtrl = TextEditingController(text: entry.notes);
     String photoPath = entry.photoPath;
     bool wantsCard = entry.wantsMembershipCard;
+    bool pledgeMoral = entry.pledgeMoral;
+    bool pledgeFinancial = entry.pledgeFinancial;
     String? errorText;
 
     final didSave = await showDialog<bool>(
@@ -2561,6 +2535,20 @@ class _RegistrationPageState extends State<RegistrationPage> {
                   value: wantsCard,
                   onChanged: (v) => setModalState(() => wantsCard = v ?? false),
                   title: const Text('طلب بطاقة الانخراط'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: pledgeMoral,
+                  onChanged: (v) => setModalState(() => pledgeMoral = v ?? false),
+                  title: const Text('أتعهد بأن أدعم الجمعية معنوياً و حسياً'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: pledgeFinancial,
+                  onChanged: (v) => setModalState(() => pledgeFinancial = v ?? false),
+                  title: const Text('أتعهد بدعم الجمعية مادياً عند المقدُرة'),
                   controlAffinity: ListTileControlAffinity.leading,
                 ),
                 const SizedBox(height: 12),
@@ -2656,6 +2644,8 @@ class _RegistrationPageState extends State<RegistrationPage> {
                     notes: notes,
                     photoPath: photoPath,
                     wantsMembershipCard: wantsCard,
+                    pledgeMoral: pledgeMoral,
+                    pledgeFinancial: pledgeFinancial,
                   ),
                 );
                 if (!dialogContext.mounted) return;
@@ -2701,7 +2691,6 @@ class _RegistrationPageState extends State<RegistrationPage> {
         ],
       ),
     );
-
     if (confirmed != true) return;
     final old = _cachedItems;
     final updated = old.where((e) => e.id != entry.id).toList();
@@ -2747,6 +2736,8 @@ class _RegistrationPageState extends State<RegistrationPage> {
           notes: _notesCtrl.text.trim(),
           photoPath: _selectedPhotoPath ?? '',
           wantsMembershipCard: _wantsMembershipCard,
+          pledgeMoral: _pledgeMoral,
+          pledgeFinancial: _pledgeFinancial,
           createdAt: DateTime.now(),
         ),
       );
@@ -2766,12 +2757,19 @@ class _RegistrationPageState extends State<RegistrationPage> {
       _selectedPhotoPath = null;
       _selectedPhotoFile = null;
       _wantsMembershipCard = false;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم تسجيل طلب الانخراط بنجاح')),
-        );
+      _pledgeMoral = false;
+      _pledgeFinancial = false;
+      _saving = false;
+    } catch (error) {
+      if (kDebugMode) {
+        print('[Registration] Error submitting form: $error');
       }
-      await _refresh();
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطأ: $error')),
+      );
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -2939,6 +2937,20 @@ class _RegistrationPageState extends State<RegistrationPage> {
                     value: _wantsMembershipCard,
                     onChanged: (value) => setState(() => _wantsMembershipCard = value ?? false),
                     title: const Text('أرغب في طلب بطاقة الانخراط'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _pledgeMoral,
+                    onChanged: (value) => setState(() => _pledgeMoral = value ?? false),
+                    title: const Text('أتعهد بأن أدعم الجمعية معنوياً و حسياً'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _pledgeFinancial,
+                    onChanged: (value) => setState(() => _pledgeFinancial = value ?? false),
+                    title: const Text('أتعهد بدعم الجمعية مادياً عند المقدُرة'),
                     controlAffinity: ListTileControlAffinity.leading,
                   ),
                   const SizedBox(height: 10),
@@ -3374,6 +3386,8 @@ class MemberRegistration {
     required this.notes,
     required this.photoPath,
     required this.wantsMembershipCard,
+    required this.pledgeMoral,
+    required this.pledgeFinancial,
     required this.createdAt,
   });
 
@@ -3385,6 +3399,8 @@ class MemberRegistration {
   final String notes;
   final String photoPath;
   final bool wantsMembershipCard;
+  final bool pledgeMoral;
+  final bool pledgeFinancial;
   final DateTime createdAt;
 
   MemberRegistration copyWith({
@@ -3396,6 +3412,8 @@ class MemberRegistration {
     String? notes,
     String? photoPath,
     bool? wantsMembershipCard,
+    bool? pledgeMoral,
+    bool? pledgeFinancial,
     DateTime? createdAt,
   }) {
     return MemberRegistration(
@@ -3407,6 +3425,8 @@ class MemberRegistration {
       notes: notes ?? this.notes,
       photoPath: photoPath ?? this.photoPath,
       wantsMembershipCard: wantsMembershipCard ?? this.wantsMembershipCard,
+      pledgeMoral: pledgeMoral ?? this.pledgeMoral,
+      pledgeFinancial: pledgeFinancial ?? this.pledgeFinancial,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -3420,6 +3440,8 @@ class MemberRegistration {
         'notes': notes,
         'photoPath': photoPath,
         'wantsMembershipCard': wantsMembershipCard ? 1 : 0,
+        'pledgeMoral': pledgeMoral ? 1 : 0,
+        'pledgeFinancial': pledgeFinancial ? 1 : 0,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -3432,6 +3454,8 @@ class MemberRegistration {
         notes: map['notes'] as String? ?? '',
         photoPath: map['photoPath'] as String? ?? '',
         wantsMembershipCard: (map['wantsMembershipCard'] as int? ?? 0) == 1,
+        pledgeMoral: (map['pledgeMoral'] as int? ?? 0) == 1,
+        pledgeFinancial: (map['pledgeFinancial'] as int? ?? 0) == 1,
         createdAt: DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
       );
 }
@@ -4301,6 +4325,8 @@ class CloudSyncService {
             notes: e['notes']?.toString() ?? '',
             photoPath: e['photo_url']?.toString() ?? '',
             wantsMembershipCard: _toBool(e['wants_membership_card']),
+            pledgeMoral: _toBool(e['pledge_moral']),
+            pledgeFinancial: _toBool(e['pledge_financial']),
             createdAt: DateTime.tryParse(e['created_at']?.toString() ?? '') ?? DateTime.now(),
           ),
         )
@@ -4324,6 +4350,8 @@ class CloudSyncService {
       'city': row.city,
       'notes': row.notes,
       'wants_membership_card': row.wantsMembershipCard,
+      'pledge_moral': row.pledgeMoral,
+      'pledge_financial': row.pledgeFinancial,
       'photo_drive_file_id': photo['file_id'] ?? '',
       'photo_url': photo['url'] ?? '',
       'created_at': row.createdAt.toIso8601String(),
@@ -4347,6 +4375,8 @@ class CloudSyncService {
       'city': row.city,
       'notes': row.notes,
       'wants_membership_card': row.wantsMembershipCard,
+      'pledge_moral': row.pledgeMoral,
+      'pledge_financial': row.pledgeFinancial,
       'photo_drive_file_id': photo['file_id'] ?? '',
       'photo_url': photo['url'] ?? '',
       'created_at': row.createdAt.toIso8601String(),
@@ -4664,6 +4694,8 @@ class CloudSyncService {
           'city': row.city,
           'notes': row.notes,
           'wants_membership_card': row.wantsMembershipCard,
+          'pledge_moral': row.pledgeMoral,
+          'pledge_financial': row.pledgeFinancial,
           'photo_drive_file_id': photo['file_id'] ?? '',
           'photo_url': photo['url'] ?? '',
           'created_at': row.createdAt.toIso8601String(),
