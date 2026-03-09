@@ -1824,7 +1824,25 @@ class _AchievementPhotosViewerDialogState extends State<_AchievementPhotosViewer
                           maxScale: 4,
                           child: Center(
                             child: Image.network(
-                              photo.path,
+                              (() {
+                                final raw = photo.path.trim();
+                                if (raw.isEmpty) return raw;
+                                String? id;
+                                if (raw.contains('drive.google.com/uc?') && raw.contains('id=')) {
+                                  id = Uri.tryParse(raw)?.queryParameters['id'];
+                                } else if (raw.contains('drive.google.com/open') && raw.contains('id=')) {
+                                  id = Uri.tryParse(raw)?.queryParameters['id'];
+                                } else if (raw.contains('drive.google.com/thumbnail') && raw.contains('id=')) {
+                                  id = Uri.tryParse(raw)?.queryParameters['id'];
+                                } else if (raw.contains('drive.google.com/file/d/')) {
+                                  final match = RegExp(r'drive\\.google\\.com/file/d/([^/]+)').firstMatch(raw);
+                                  id = match?.group(1);
+                                }
+                                if (id != null && id.isNotEmpty) {
+                                  return 'https://lh3.googleusercontent.com/d/$id=w2000';
+                                }
+                                return raw;
+                              })(),
                               fit: BoxFit.contain,
                               loadingBuilder: (context, child, loadingProgress) {
                                 if (loadingProgress == null) return child;
@@ -2122,11 +2140,25 @@ class _AchievementsPageState extends State<AchievementsPage> {
     if (item.id == null) return;
     final picked = await _imagePicker.pickMultiImage(imageQuality: 80);
     if (picked.isEmpty) return;
-    final paths = picked.map((e) => e.path).toList();
-    await RegistrationRepository.instance.addAchievementPhotos(
-      item.id!,
-      paths,
-    );
+    if (kIsWeb) {
+      for (final file in picked) {
+        CloudSyncService.instance._tempWebPhotoFile = file;
+        try {
+          await RegistrationRepository.instance.addAchievementPhotos(
+            item.id!,
+            [file.path],
+          );
+        } finally {
+          CloudSyncService.instance._tempWebPhotoFile = null;
+        }
+      }
+    } else {
+      final paths = picked.map((e) => e.path).toList();
+      await RegistrationRepository.instance.addAchievementPhotos(
+        item.id!,
+        paths,
+      );
+    }
     if (!mounted) return;
     await _refresh();
   }
@@ -2264,7 +2296,25 @@ class _AchievementsPageState extends State<AchievementsPage> {
                                                       child: ClipRRect(
                                                         borderRadius: BorderRadius.circular(12),
                                                         child: Image.network(
-                                                          photo.path,
+                                                          (() {
+                                                            final raw = photo.path.trim();
+                                                            if (raw.isEmpty) return raw;
+                                                            String? id;
+                                                            if (raw.contains('drive.google.com/uc?') && raw.contains('id=')) {
+                                                              id = Uri.tryParse(raw)?.queryParameters['id'];
+                                                            } else if (raw.contains('drive.google.com/open') && raw.contains('id=')) {
+                                                              id = Uri.tryParse(raw)?.queryParameters['id'];
+                                                            } else if (raw.contains('drive.google.com/thumbnail') && raw.contains('id=')) {
+                                                              id = Uri.tryParse(raw)?.queryParameters['id'];
+                                                            } else if (raw.contains('drive.google.com/file/d/')) {
+                                                              final match = RegExp(r'drive\\.google\\.com/file/d/([^/]+)').firstMatch(raw);
+                                                              id = match?.group(1);
+                                                            }
+                                                            if (id != null && id.isNotEmpty) {
+                                                              return 'https://lh3.googleusercontent.com/d/$id=w800';
+                                                            }
+                                                            return raw;
+                                                          })(),
                                                           fit: BoxFit.cover,
                                                           loadingBuilder: (context, child, loadingProgress) {
                                                             if (loadingProgress == null) return child;
