@@ -1090,8 +1090,51 @@ class _PlasmaPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  late Future<({
+    int registrationsTotal,
+    int wantsCard,
+    int pledgeMoral,
+    int pledgeFinancial,
+    int achievementsTotal,
+  })> _statsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _statsFuture = _loadStats();
+  }
+
+  Future<({
+    int registrationsTotal,
+    int wantsCard,
+    int pledgeMoral,
+    int pledgeFinancial,
+    int achievementsTotal,
+  })> _loadStats() async {
+    final registrations = await RegistrationRepository.instance.getAll();
+    final achievements = await RegistrationRepository.instance.getAllAchievements();
+
+    final total = registrations.length;
+    final wantsCard = registrations.where((e) => e.wantsMembershipCard).length;
+    final pledgeMoral = registrations.where((e) => e.pledgeMoral).length;
+    final pledgeFinancial = registrations.where((e) => e.pledgeFinancial).length;
+
+    return (
+      registrationsTotal: total,
+      wantsCard: wantsCard,
+      pledgeMoral: pledgeMoral,
+      pledgeFinancial: pledgeFinancial,
+      achievementsTotal: achievements.length,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1115,30 +1158,56 @@ class HomePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const _StatsRow(),
+        FutureBuilder<({
+          int registrationsTotal,
+          int wantsCard,
+          int pledgeMoral,
+          int pledgeFinancial,
+          int achievementsTotal,
+        })>(
+          future: _statsFuture,
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()));
+            }
+            final s = snap.data;
+            if (s == null) {
+              return const _GlassCard(child: Text('تعذر تحميل الإحصائيات', style: TextStyle(fontSize: 16)));
+            }
+
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: _StatCard(value: '${s.registrationsTotal}', label: 'إجمالي المنخرطين')),
+                    const SizedBox(width: 10),
+                    Expanded(child: _StatCard(value: '${s.wantsCard}', label: 'طلبوا البطاقة')),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _StatCard(value: '${s.pledgeMoral}', label: 'دعم معنوي')),
+                    const SizedBox(width: 10),
+                    Expanded(child: _StatCard(value: '${s.pledgeFinancial}', label: 'دعم مادي')),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: _StatCard(value: '${s.achievementsTotal}', label: 'الإنجازات')),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
         const SizedBox(height: 14),
         const _SectionIntro(
           title: 'عن الجمعية',
           content:
               'جمعية مدنية تعمل على تمكين الشباب، دعم الأسر، وتعزيز التضامن المحلي عبر برامج اجتماعية وتربوية مستمرة.',
         ),
-      ],
-    );
-  }
-}
-
-class _StatsRow extends StatelessWidget {
-  const _StatsRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: const [
-        Expanded(child: _StatCard(value: '4', label: 'مبادرة')),
-        SizedBox(width: 10),
-        Expanded(child: _StatCard(value: '150', label: 'مستفيد')),
-        SizedBox(width: 10),
-        Expanded(child: _StatCard(value: '25', label: 'متطوع')),
       ],
     );
   }
@@ -2533,7 +2602,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 TextField(
                   controller: notesCtrl,
                   maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'ملاحظات'),
+                  decoration: const InputDecoration(labelText: 'مقترحات'),
                 ),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
@@ -2974,7 +3043,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                   const SizedBox(height: 10),
                   _field(
                     controller: _notesCtrl,
-                    label: 'ملاحظات (اختياري)',
+                    label: 'مقترحات (اختياري)',
                     maxLines: 3,
                     validator: (_) => null,
                   ),
